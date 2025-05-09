@@ -1,0 +1,114 @@
+import torch
+from torch.utils.data import Dataset
+from transformers import AutoTokenizer
+from datasets import load_dataset
+import pandas as pd
+from sklearn.model_selection import train_test_split
+
+
+def load_data(
+    dataset_name: str = "lib3m/lib3m_qa_dataset_v1",
+    split: str = "train",
+    lang: str = "en"
+) -> pd.DataFrame:
+    ds = load_dataset(dataset_name, split=split)
+    df = ds.to_pandas()
+    df = df[df.language == lang].reset_index(drop=True)
+    return df
+
+
+def split_dataframe(
+    df,
+    test_size: float = 0.2,
+    random_state: int = 42
+) -> tuple:
+
+    train_df, val_df = train_test_split(
+        df,
+        test_size=test_size,
+        random_state=random_state,
+        shuffle=True
+    )
+    
+    return train_df.reset_index(drop=True), val_df.reset_index(drop=True)
+
+class QADataset(Dataset):
+    def __init__(
+        self,
+        dataframe,
+        tokenizer: AutoTokenizer,
+        max_length: int = 512,
+        mode: str = 'generative'
+    ):
+        self.df = dataframe
+        self.tokenizer = tokenizer
+        self.max_length = max_length
+        self.mode = mode
+
+    def __len__(self):
+        return len(self.df)
+
+    def __getitem__(self, idx):
+        row = self.df.iloc[idx]
+        question = row['question']
+        content = row['content']
+        answer = row['answer']
+
+        if self.mode == 'extractive':
+            # Cari posisi jawaban di konten
+            start_char = content.find(answer)
+            if start_char == -1:
+                # Jika tidak ditemukan, default ke awal
+                start_char, end_char = 0, 0
+            else:
+                end_char = start_char + len(answer)
+
+            inputs = self.tokenizer(
+                question,
+                content,
+                truncation='only_second',
+                max_length=self.max_length,
+                return_offsets_mapping=True,
+                return_tensors='pt'
+            )
+            offsets = inputs.pop('offset_mapping').squeeze(0)
+
+            # Temukan token start dan end
+            token_start_index = 0
+            token_end_index = 0
+            for i, (s, e) in enumerate(offsets.tolist()):
+                if s <= start_char < e:
+                    token_start_index = i
+                if s < end_char <= e:
+                    token_end_index = i
+                    break
+
+            return {
+                'input_ids': inputs['input_ids'].squeeze(),
+                'attention_mask': inputs['attention_mask'].squeeze(),
+                'start_positions': torch.tensor(token_start_index, dtype=torch.long),
+                'end_positions': torch.tensor(token_end_index, dtype=torch.long)
+            }
+
+        # Generative QA
+        text = f"<question> {question} <context> {content} <answer>"
+        tokenized = self.tokenizer(
+            text,
+            truncation=True,
+            padding='max_length',
+            max_length=self.max_length,
+            return_tensors='pt'
+        )
+        labels = self.tokenizer(
+            answer,
+            truncation=True,
+            padding='max_length',
+            max_length=self.max_length,
+            return_tensors='pt'
+        ).input_ids
+        labels[labels == self.tokenizer.pad_token_id] = -100
+        return {
+            'input_ids': tokenized.input_ids.squeeze(),
+            'attention_mask': tokenized.attention_mask.squeeze(),
+            'labels': labels.squeeze()
+        }
