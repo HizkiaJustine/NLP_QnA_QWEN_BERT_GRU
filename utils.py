@@ -58,7 +58,7 @@ class QADataset(Dataset):
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
         question = row['question']
-        content = row['content']
+        content = row['content'][:300] # take 300 first characters 
         answer = row['answer']
 
         # Generative QA
