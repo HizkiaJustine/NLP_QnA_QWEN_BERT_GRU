@@ -5,15 +5,24 @@ from datasets import load_dataset
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
+def load_data_split(dataset_name="lib3m/lib3m_qa_dataset_v1", split="train", lang="en", test_size=0.2, row=100000):
+    raw = load_dataset("lib3m/lib3m_qa_dataset_v1", split=split)
+    dataset = raw.filter(lambda x: x['language'] == 'en')[:row]
 
+    # Split train/validation
+    dataset = dataset.train_test_split(test_size=0.2)
+    return dataset #  dataset['train'] & dataset['test']
+
+  
 def load_data(
     dataset_name: str = "lib3m/lib3m_qa_dataset_v1",
     split: str = "train",
-    lang: str = "en"
+    lang: str = "en",
+    row:int = 100000
 ) -> pd.DataFrame:
     ds = load_dataset(dataset_name, split=split)
     df = ds.to_pandas()
-    df = df[df.language == lang].reset_index(drop=True)
+    df = df[df.language == lang].reset_index(drop=True)[:row]
     return df
 
 
