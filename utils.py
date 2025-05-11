@@ -7,7 +7,7 @@ from sklearn.model_selection import train_test_split
 
 def load_data_split(dataset_name="lib3m/lib3m_qa_dataset_v1", split="train", lang="en", test_size=0.2, row=100000):
     raw = load_dataset("lib3m/lib3m_qa_dataset_v1", split=split)
-    dataset = raw.filter(lambda x: x['language'] == 'en')[:row]
+    dataset = raw.filter(lambda x: x['language'] == 'en').select(range(row))
 
     # Split train/validation
     dataset = dataset.train_test_split(test_size=0.2)
